@@ -214,4 +214,9 @@ f:SetScript("OnEvent", function(self, event)
   if event == "PLAYER_LOGIN" then
     math.randomseed(math.floor(GetTime() * 1000))
     math.random()
-  elseif even
+  elseif event == "PLAYER_LOGOUT" then
+    local db = ensureDB()
+    db.slots = WATCH_SLOTS
+    db.enabled = ENABLED
+  end
+end)
