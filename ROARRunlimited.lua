@@ -1,4 +1,4 @@
--- ROARRunlimited v1.0
+-- ROARRunlimited v1.1
 -- Vanilla / Turtle WoW 1.12
 -- Lua 5.0 safe
 -- SavedVariables: ROEDDB
@@ -15,7 +15,7 @@ local EMOTE_TOKENS_BATTLE = {
 -------------------------------------------------
 -- State
 -------------------------------------------------
-local WATCH_SLOTS = {}   -- [slot] = { chance=100, cd=6, last=0 }
+local WATCH_SLOTS = {}   -- [instance] = { slot, chance=100, cd=6, last=0 }
 local WATCH_MODE = false
 local ENABLED = true
 
@@ -57,20 +57,14 @@ local function performEmote(token)
 end
 
 -------------------------------------------------
--- Emote logic per slot
+-- Emote logic per watched slot
 -------------------------------------------------
-local function doBattleEmoteForSlot(slot)
-  if not ENABLED then return end
-
-  local cfg = WATCH_SLOTS[slot]
-  if not cfg then return end
-
+local function doBattleEmoteForSlot(cfg)
+  if not ENABLED or not cfg then return end
   local now = GetTime()
   cfg.last = cfg.last or 0
-
   if now - cfg.last < cfg.cd then return end
   cfg.last = now
-
   if math.random(1,100) <= cfg.chance then
     local e = pick(EMOTE_TOKENS_BATTLE)
     if e then performEmote(e) end
@@ -99,8 +93,10 @@ function UseAction(slot, checkCursor, onSelf)
     chat("pressed slot " .. tostring(slot))
   end
 
-  if WATCH_SLOTS[slot] then
-    doBattleEmoteForSlot(slot)
+  for _, cfg in pairs(WATCH_SLOTS) do
+    if cfg.slot == slot then
+      doBattleEmoteForSlot(cfg)
+    end
   end
 
   return _Orig_UseAction(slot, checkCursor, onSelf)
@@ -117,15 +113,13 @@ SlashCmdList["ROED"] = function(raw)
   -- /roed slotX <slotNumber>
   local _, _, slotIndex = string.find(cmd, "^slot(%d+)$")
   if slotIndex then
+    local instance = tonumber(slotIndex)
     local slot = tonumber(rest)
-    if slot then
-      if not WATCH_SLOTS[slot] then
-        WATCH_SLOTS[slot] = { chance = 100, cd = 6, last = 0 }
-        chat("watching slot " .. slot)
-      else
-        chat("slot " .. slot .. " already watched")
-      end
+    if instance and slot then
+      WATCH_SLOTS[instance] = WATCH_SLOTS[instance] or { slot = slot, chance = 100, cd = 6, last = 0 }
+      WATCH_SLOTS[instance].slot = slot
       ensureDB().slots = WATCH_SLOTS
+      chat("instance"..instance.." watching slot "..slot)
     else
       chat("usage: /roed slotX <slotNumber>")
     end
@@ -135,14 +129,14 @@ SlashCmdList["ROED"] = function(raw)
   -- /roed chanceX <0-100>
   local _, _, chanceIndex = string.find(cmd, "^chance(%d+)$")
   if chanceIndex then
-    local slot = tonumber(chanceIndex)
+    local instance = tonumber(chanceIndex)
     local n = tonumber(rest)
-    local cfg = WATCH_SLOTS[slot]
+    local cfg = WATCH_SLOTS[instance]
     if cfg and n and n >= 0 and n <= 100 then
       cfg.chance = n
-      chat("slot "..slot.." chance set to "..n.."%")
+      chat("instance"..instance.." chance set to "..n.."%")
     else
-      chat("usage: /roed chanceX <0-100> (slot must exist)")
+      chat("usage: /roed chanceX <0-100> (instance must exist)")
     end
     return
   end
@@ -150,14 +144,14 @@ SlashCmdList["ROED"] = function(raw)
   -- /roed timerX <seconds>
   local _, _, timerIndex = string.find(cmd, "^timer(%d+)$")
   if timerIndex then
-    local slot = tonumber(timerIndex)
+    local instance = tonumber(timerIndex)
     local n = tonumber(rest)
-    local cfg = WATCH_SLOTS[slot]
+    local cfg = WATCH_SLOTS[instance]
     if cfg and n and n >= 0 then
       cfg.cd = n
-      chat("slot "..slot.." cooldown set to "..n.."s")
+      chat("instance"..instance.." cooldown set to "..n.."s")
     else
-      chat("usage: /roed timerX <seconds> (slot must exist)")
+      chat("usage: /roed timerX <seconds> (instance must exist)")
     end
     return
   end
@@ -192,14 +186,15 @@ SlashCmdList["ROED"] = function(raw)
   if cmd == "info" then
     chat("enabled: " .. tostring(ENABLED))
     local found = false
-    for slot, cfg in pairs(WATCH_SLOTS) do
+    for instance, cfg in pairs(WATCH_SLOTS) do
       found = true
-      chat("slot "..slot.." | chance "..cfg.chance.."% | cd "..cfg.cd.."s")
+      chat("instance"..instance..": slot "..cfg.slot.." | chance "..cfg.chance.."% | cd "..cfg.cd.."s")
     end
     if not found then chat("no watched slots") end
     return
   end
 
+  -- fallback help
   chat("/roed slotX <n> | chanceX <0-100> | timerX <sec> | watch | on | off | info | reset")
 end
 
