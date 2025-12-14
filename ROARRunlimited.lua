@@ -67,8 +67,6 @@ local function doBattleEmoteForSlot(slot)
 
   local now = GetTime()
   cfg.last = cfg.last or 0
-  cfg.cd = cfg.cd or 0
-  cfg.chance = cfg.chance or 100
 
   if now - cfg.last < cfg.cd then return end
   cfg.last = now
@@ -117,13 +115,17 @@ SlashCmdList["ROED"] = function(raw)
   local cmd, rest = split_cmd(raw)
 
   -- /roed slotX <slotNumber>
-  local slotIndex = string.match(cmd, "^slot(%d+)$")
+  local _, _, slotIndex = string.find(cmd, "^slot(%d+)$")
   if slotIndex then
-    local n = tonumber(rest)
-    if n then
-      WATCH_SLOTS[n] = WATCH_SLOTS[n] or { chance = 100, cd = 6, last = 0 }
+    local slot = tonumber(rest)
+    if slot then
+      if not WATCH_SLOTS[slot] then
+        WATCH_SLOTS[slot] = { chance = 100, cd = 6, last = 0 }
+        chat("watching slot " .. slot)
+      else
+        chat("slot " .. slot .. " already watched")
+      end
       ensureDB().slots = WATCH_SLOTS
-      chat("watching slot " .. n)
     else
       chat("usage: /roed slotX <slotNumber>")
     end
@@ -131,31 +133,31 @@ SlashCmdList["ROED"] = function(raw)
   end
 
   -- /roed chanceX <0-100>
-  local chanceIndex = string.match(cmd, "^chance(%d+)$")
+  local _, _, chanceIndex = string.find(cmd, "^chance(%d+)$")
   if chanceIndex then
+    local slot = tonumber(chanceIndex)
     local n = tonumber(rest)
-    if n and n >= 0 and n <= 100 then
-      for _, cfg in pairs(WATCH_SLOTS) do
-        cfg.chance = n
-      end
-      chat("chance set to " .. n .. "% for all watched slots")
+    local cfg = WATCH_SLOTS[slot]
+    if cfg and n and n >= 0 and n <= 100 then
+      cfg.chance = n
+      chat("slot "..slot.." chance set to "..n.."%")
     else
-      chat("usage: /roed chanceX <0-100>")
+      chat("usage: /roed chanceX <0-100> (slot must exist)")
     end
     return
   end
 
   -- /roed timerX <seconds>
-  local timerIndex = string.match(cmd, "^timer(%d+)$")
+  local _, _, timerIndex = string.find(cmd, "^timer(%d+)$")
   if timerIndex then
+    local slot = tonumber(timerIndex)
     local n = tonumber(rest)
-    if n and n >= 0 then
-      for _, cfg in pairs(WATCH_SLOTS) do
-        cfg.cd = n
-      end
-      chat("cooldown set to " .. n .. "s for all watched slots")
+    local cfg = WATCH_SLOTS[slot]
+    if cfg and n and n >= 0 then
+      cfg.cd = n
+      chat("slot "..slot.." cooldown set to "..n.."s")
     else
-      chat("usage: /roed timerX <seconds>")
+      chat("usage: /roed timerX <seconds> (slot must exist)")
     end
     return
   end
@@ -169,32 +171,32 @@ SlashCmdList["ROED"] = function(raw)
   if cmd == "on" then
     ENABLED = true
     ensureDB().enabled = true
-    chat("ROARRunlimited enabled.")
+    chat("ROARRunlimited enabled")
     return
   end
 
   if cmd == "off" then
     ENABLED = false
     ensureDB().enabled = false
-    chat("ROARRunlimited disabled.")
+    chat("ROARRunlimited disabled")
     return
   end
 
   if cmd == "reset" then
     WATCH_SLOTS = {}
     ensureDB().slots = {}
-    chat("all watched slots cleared.")
+    chat("all watched slots cleared")
     return
   end
 
   if cmd == "info" then
     chat("enabled: " .. tostring(ENABLED))
-    local count = 0
+    local found = false
     for slot, cfg in pairs(WATCH_SLOTS) do
-      count = count + 1
+      found = true
       chat("slot "..slot.." | chance "..cfg.chance.."% | cd "..cfg.cd.."s")
     end
-    if count == 0 then chat("no watched slots.") end
+    if not found then chat("no watched slots") end
     return
   end
 
@@ -212,9 +214,4 @@ f:SetScript("OnEvent", function(self, event)
   if event == "PLAYER_LOGIN" then
     math.randomseed(math.floor(GetTime() * 1000))
     math.random()
-  elseif event == "PLAYER_LOGOUT" then
-    local db = ensureDB()
-    db.slots = WATCH_SLOTS
-    db.enabled = ENABLED
-  end
-end)
+  elseif even
