@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: ROARRunlimited
+## Notes: Plays battle-themed emotes from multiple watched action slots.
+## Author: babunigaming
+## Version: 1.0
+## SavedVariables: ROEDDB
+
+roarrunlimited.lua
