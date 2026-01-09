@@ -1,8 +1,8 @@
 ## Interface: 11200
 ## Title: ROARRunlimited
-## Notes: Plays battle-themed emotes from multiple watched action slots.
+## Notes: Plays ROAR-guild emotes from multiple independently configured action slots.
 ## Author: babunigaming
-## Version: 1.0
+## Version: 1.1
 ## SavedVariables: ROEDDB
 
 roarrunlimited.lua
