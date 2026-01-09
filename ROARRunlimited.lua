@@ -1,4 +1,4 @@
--- ROARRunlimited v1.1
+-- ROARRunlimited v1.1 FIXED
 -- Vanilla / Turtle WoW 1.12
 -- Lua 5.0 safe
 -- SavedVariables: ROEDDB
@@ -9,13 +9,13 @@
 -- Battle emote pool
 -------------------------------------------------
 local EMOTE_TOKENS_BATTLE = {
-  "ROAR","CHARGE","CHEER","BORED","FLEX"
+  "ROAR","CHARGE","CHEER","FLEX"
 }
 
 -------------------------------------------------
 -- State
 -------------------------------------------------
-local WATCH_SLOTS = {}   -- [instance] = { slot, chance=100, cd=6, last=0 }
+local WATCH_SLOTS = {}   -- [instance] = { slot, chance, cd, last }
 local WATCH_MODE = false
 local ENABLED = true
 
@@ -30,6 +30,7 @@ end
 
 local function ensureDB()
   if type(ROEDDB) ~= "table" then ROEDDB = {} end
+  if type(ROEDDB.slots) ~= "table" then ROEDDB.slots = {} end
   return ROEDDB
 end
 
@@ -37,7 +38,15 @@ local _loaded = false
 local function ensureLoaded()
   if _loaded then return end
   local db = ensureDB()
-  WATCH_SLOTS = db.slots or {}
+
+  WATCH_SLOTS = db.slots
+
+  for _, cfg in pairs(WATCH_SLOTS) do
+    if cfg.chance == nil then cfg.chance = 100 end
+    if cfg.cd == nil then cfg.cd = 6 end
+    if cfg.last == nil then cfg.last = 0 end
+  end
+
   if db.enabled ~= nil then ENABLED = db.enabled end
   _loaded = true
 end
@@ -57,14 +66,16 @@ local function performEmote(token)
 end
 
 -------------------------------------------------
--- Emote logic per watched slot
+-- Emote logic
 -------------------------------------------------
 local function doBattleEmoteForSlot(cfg)
-  if not ENABLED or not cfg then return end
+  if not ENABLED then return end
+  if not cfg or not cfg.slot then return end
+
   local now = GetTime()
-  cfg.last = cfg.last or 0
   if now - cfg.last < cfg.cd then return end
   cfg.last = now
+
   if math.random(1,100) <= cfg.chance then
     local e = pick(EMOTE_TOKENS_BATTLE)
     if e then performEmote(e) end
@@ -78,7 +89,7 @@ local function split_cmd(raw)
   local s = raw or ""
   s = string.gsub(s, "^%s+", "")
   local _, _, cmd, rest = string.find(s, "^(%S+)%s*(.*)$")
-  if not cmd then cmd = "" rest = "" end
+  if not cmd then return "", "" end
   return cmd, rest
 end
 
@@ -90,7 +101,7 @@ function UseAction(slot, checkCursor, onSelf)
   ensureLoaded()
 
   if WATCH_MODE then
-    chat("pressed slot " .. tostring(slot))
+    chat("pressed slot " .. slot)
   end
 
   for _, cfg in pairs(WATCH_SLOTS) do
@@ -103,109 +114,91 @@ function UseAction(slot, checkCursor, onSelf)
 end
 
 -------------------------------------------------
--- Slash Commands (/roed)
+-- Slash Commands
 -------------------------------------------------
 SLASH_ROED1 = "/roed"
 SlashCmdList["ROED"] = function(raw)
   ensureLoaded()
   local cmd, rest = split_cmd(raw)
 
-  -- /roed slotX <slotNumber>
   local _, _, slotIndex = string.find(cmd, "^slot(%d+)$")
   if slotIndex then
     local instance = tonumber(slotIndex)
     local slot = tonumber(rest)
     if instance and slot then
-      WATCH_SLOTS[instance] = WATCH_SLOTS[instance] or { slot = slot, chance = 100, cd = 6, last = 0 }
+      WATCH_SLOTS[instance] = WATCH_SLOTS[instance] or {}
       WATCH_SLOTS[instance].slot = slot
-      ensureDB().slots = WATCH_SLOTS
+      WATCH_SLOTS[instance].chance = WATCH_SLOTS[instance].chance or 100
+      WATCH_SLOTS[instance].cd = WATCH_SLOTS[instance].cd or 6
+      WATCH_SLOTS[instance].last = 0
       chat("instance"..instance.." watching slot "..slot)
     else
-      chat("usage: /roed slotX <slotNumber>")
+      chat("usage: /roed slotX <slot>")
     end
     return
   end
 
-  -- /roed chanceX <0-100>
   local _, _, chanceIndex = string.find(cmd, "^chance(%d+)$")
   if chanceIndex then
     local instance = tonumber(chanceIndex)
     local n = tonumber(rest)
-    local cfg = WATCH_SLOTS[instance]
-    if cfg and n and n >= 0 and n <= 100 then
-      cfg.chance = n
-      chat("instance"..instance.." chance set to "..n.."%")
+    if WATCH_SLOTS[instance] and n and n >= 0 and n <= 100 then
+      WATCH_SLOTS[instance].chance = n
+      chat("instance"..instance.." chance "..n.."%")
     else
-      chat("usage: /roed chanceX <0-100> (instance must exist)")
+      chat("invalid instance or value")
     end
     return
   end
 
-  -- /roed timerX <seconds>
   local _, _, timerIndex = string.find(cmd, "^timer(%d+)$")
   if timerIndex then
     local instance = tonumber(timerIndex)
     local n = tonumber(rest)
-    local cfg = WATCH_SLOTS[instance]
-    if cfg and n and n >= 0 then
-      cfg.cd = n
-      chat("instance"..instance.." cooldown set to "..n.."s")
+    if WATCH_SLOTS[instance] and n and n >= 0 then
+      WATCH_SLOTS[instance].cd = n
+      chat("instance"..instance.." cd "..n.."s")
     else
-      chat("usage: /roed timerX <seconds> (instance must exist)")
+      chat("invalid instance or value")
+    end
+    return
+  end
+
+  if cmd == "reset" then
+    WATCH_SLOTS = {}
+    ensureDB().slots = WATCH_SLOTS
+    chat("all instances cleared")
+    return
+  end
+
+  if cmd == "info" then
+    chat("enabled: "..tostring(ENABLED))
+    for i, cfg in pairs(WATCH_SLOTS) do
+      chat("instance"..i..": slot "..cfg.slot.." | chance "..cfg.chance.."% | cd "..cfg.cd.."s")
     end
     return
   end
 
   if cmd == "watch" then
     WATCH_MODE = not WATCH_MODE
-    chat("watch mode " .. (WATCH_MODE and "ON" or "OFF"))
+    chat("watch mode "..(WATCH_MODE and "ON" or "OFF"))
     return
   end
 
-  if cmd == "on" then
-    ENABLED = true
-    ensureDB().enabled = true
-    chat("ROARRunlimited enabled")
-    return
-  end
+  if cmd == "on" then ENABLED = true chat("enabled") return end
+  if cmd == "off" then ENABLED = false chat("disabled") return end
 
-  if cmd == "off" then
-    ENABLED = false
-    ensureDB().enabled = false
-    chat("ROARRunlimited disabled")
-    return
-  end
-
-  if cmd == "reset" then
-    WATCH_SLOTS = {}
-    ensureDB().slots = {}
-    chat("all watched slots cleared")
-    return
-  end
-
-  if cmd == "info" then
-    chat("enabled: " .. tostring(ENABLED))
-    local found = false
-    for instance, cfg in pairs(WATCH_SLOTS) do
-      found = true
-      chat("instance"..instance..": slot "..cfg.slot.." | chance "..cfg.chance.."% | cd "..cfg.cd.."s")
-    end
-    if not found then chat("no watched slots") end
-    return
-  end
-
-  -- fallback help
-  chat("/roed slotX <n> | chanceX <0-100> | timerX <sec> | watch | on | off | info | reset")
+  chat("/roed slotX <n> | chanceX <0-100> | timerX <sec> | watch | info | reset")
 end
 
 -------------------------------------------------
--- Init / RNG / Save
+-- Init / Save
 -------------------------------------------------
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_LOGIN")
 f:RegisterEvent("PLAYER_LOGOUT")
 
-f:SetScript("OnEvent", function(self, event)
+f:SetScript("OnEvent", function(_, event)
   if event == "PLAYER_LOGIN" then
     math.randomseed(math.floor(GetTime() * 1000))
     math.random()
